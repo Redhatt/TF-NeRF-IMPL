@@ -16,4 +16,5 @@ DEBUG = log.debug
 WARN = log.warning
 CRITICAL = log.critical
 
-BASE_DIR = os.getcwd()
+BASE_DIR = os.path.dirname(__file__)
+print(f"BASE DIR NAME-{BASE_DIR}")
