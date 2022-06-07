@@ -2,7 +2,7 @@ from globals import *
 
 
 def save_model(model, name_of_file):
-    path_to_models = "models"
+    path_to_models = os.path.join(BASE_DIR, "models")
     if os.path.exists(path_to_models):
         path_to_file = os.path.join(path_to_models, name_of_file)
         model.save(path_to_file)
@@ -34,7 +34,7 @@ def load_model(name_of_file=None, level1=10, level2=6):
         INFO(model.summary())
         return model
 
-    path_to_models = "models"
+    path_to_models = os.path.join(BASE_DIR, "models")
     path_to_file = os.path.join(path_to_models, name_of_file)
     if os.path.exists(path_to_file):
         try:
@@ -51,7 +51,7 @@ def load_model(name_of_file=None, level1=10, level2=6):
 
 
 def load_data(name_of_file='tiny_nerf_data.npz'):
-    path_to_data = "data"
+    path_to_data = os.path.join(BASE_DIR, "data")
 
     if os.path.exists(path_to_data):
         path_to_file = os.path.join(path_to_data, name_of_file)

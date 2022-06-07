@@ -15,3 +15,5 @@ ERROR = log.error
 DEBUG = log.debug
 WARN = log.warning
 CRITICAL = log.critical
+
+BASE_DIR = os.getcwd()
