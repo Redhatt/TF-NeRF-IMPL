@@ -69,7 +69,7 @@ def inverse_transform_sampling(pdf, near, far, H, W, samples):
 
     # inverse transform sampling
     uniform_samples = tf.random.uniform((H, W, samples))
-    index = tf.searchsorted(cdf, uniform_samples, side='right')
+    index = tf.clip(tf.searchsorted(cdf, uniform_samples, side='right'), 0, samples-1)
 
     # adding uniform points to not get totally biased
     line_ = tf.linspace(near, far, given_pdf_samples_size)
