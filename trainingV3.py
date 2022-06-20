@@ -1,9 +1,6 @@
-import matplotlib.pyplot as plt
-import numpy as np
-
 from globals import *
 from load import init_model, load_data, load_model, save_model
-from mytiming import Timings
+from times import Timings
 from tensorflow.keras import backend as K
 
 LEVEL1 = 10
@@ -15,7 +12,7 @@ def decay_rate(iteration, total_iter, rate=0.1, high=5e-4, low=5e-5):
     decay function:-> low + (high - low) * exp( -decay * iteration)
     :param iteration: current iteration
     :param total_iter: total iteration
-    :param rate: after total_iteration/2 value will be 10% of scaled range
+    :param rate: after total_iteration/2 value will be rate% of scaled range
     :param high: high value
     :param low: low value
     :return: calculated learning rate
@@ -25,6 +22,13 @@ def decay_rate(iteration, total_iter, rate=0.1, high=5e-4, low=5e-5):
 
 
 def position_encoding(x, level=10):
+    """
+    encodes sin and cosine values of given vector
+    eg: input [x] -> output [x, sin(2^i * x), cos(2^i * x)] i running from 0 to level
+    :param x: position tensor
+    :param level: frequency level
+    :return: tensor
+    """
     ans = [x]
     for i in range(level):
         for func in (tf.sin, tf.cos):
@@ -33,6 +37,14 @@ def position_encoding(x, level=10):
 
 
 def get_rays(H, W, focal, c2w):
+    """
+    for the given position and focal length returns rays coming out of camera
+    :param H: height of image
+    :param W: width of image
+    :param focal: focal length of camera
+    :param c2w: position of camera
+    :return: rays origin tensor, rays direction tensor
+    """
     i, j = tf.meshgrid(tf.range(W, dtype=tf.float32), tf.range(H, dtype=tf.float32), indexing='xy')
     dirs = tf.stack([(i - W * .5) / focal, -(j - H * .5) / focal, -tf.ones_like(i)], -1)
     rays_d = tf.reduce_sum(dirs[..., np.newaxis, :] * c2w[:3, :3], -1)
@@ -41,6 +53,11 @@ def get_rays(H, W, focal, c2w):
 
 
 def get_angles(ray_d):
+    """
+    for given rays direction returns angles from z axis and x axis it makes
+    :param ray_d: rays direction tensor
+    :return: angles tensor
+    """
     a = tf.norm(ray_d, axis=-1)[..., None]
     ray_d_norm = ray_d / a
     theta = tf.reduce_sum(ray_d_norm * tf.constant([0., 0., 1.]), -1)
@@ -55,6 +72,22 @@ def temp(a):
 
 
 def inverse_transform_sampling(pdf, near, far, H, W, samples):
+    """
+    to sample points along a ray we can use this equation:
+    y = a + t*b
+    where a is origin and b it the direction with parameter t which is scaled distance.
+    to sample between near and far we can set t = linspace(near, far, samples)
+    but this will produce uniformed sampled points.
+    to get a distribution with a desired pdf we can use inverse transform sampling.
+    here to reduce high bias towards given pdf few samples of uniform distribution has also been added.
+    :param pdf: input pdf distribution
+    :param near: near point
+    :param far: far point
+    :param H: height of image
+    :param W: width of image
+    :param samples: no of samples on desired pdf
+    :return: parametric tensor t having pdf as of the given, no of samples in produced
+    """
     line = tf.broadcast_to(tf.linspace(near, far, samples), (H, W, samples))
     given_pdf_samples_size = int(pdf.shape[-1])
 
@@ -128,7 +161,7 @@ def render(model, ray_o, ray_d, near, far, level1=LEVEL1, level2=LEVEL2, samples
 
 
 def render_(model, ray_o, ray_d, theta, phi, near, far, samples, level1=LEVEL1, level2=LEVEL2):
-    def batch_query(input_, chunks=2 ** 15):
+    def batch_query(input_, chunks=2 ** 13):
         return tf.concat([model(input_[x: x + chunks]) for x in range(0, input_.shape[0], chunks)], 0)
         # return tf.concat([temp(1.*input_[x: x + chunks]) for x in range(0, input_.shape[0], chunks)], 0)
 
@@ -174,7 +207,7 @@ def render_(model, ray_o, ray_d, theta, phi, near, far, samples, level1=LEVEL1, 
 
 
 def render_fine(model, ray_o, ray_d, theta, phi, near, far, samples, pdf, level1=LEVEL1, level2=LEVEL2):
-    def batch_query(input_, chunks=2 ** 15):
+    def batch_query(input_, chunks=2 ** 13):
         return tf.concat([model(input_[x: x + chunks]) for x in range(0, input_.shape[0], chunks)], 0)
         # return tf.concat([temp(1.*input_[x: x + chunks]) for x in range(0, input_.shape[0], chunks)], 0)
 
@@ -226,6 +259,8 @@ def train(model, target, ray_o, ray_d, near, far, samples, level1=LEVEL1, level2
     R, C = map(int, ray_o.shape[:2])
     stepr = 2 ** int(math.log2(R / divr))
     stepc = 2 ** int(math.log2(C / divc))
+    # stepr = int(R / divr)
+    # stepc = int(C / divc)
 
     rows = [(r, min(r + stepr, R)) for r in range(0, R, stepr)]
     cols = [(c, min(c + stepc, C)) for c in range(0, C, stepc)]
@@ -259,12 +294,10 @@ def train(model, target, ray_o, ray_d, near, far, samples, level1=LEVEL1, level2
 
 def main():
     global LEVEL1, LEVEL2
-    # name = "model_L10_L6_H.h5"
-    LEVEL1 = 10
-    LEVEL2 = 0
-    name = "model_L10_L0_H_S64.h5"
-    # name = "testing_model.h5"
-    lrate = 6e-5
+    name = "car_L6_L5_H_S32.h5"
+    LEVEL1 = 3
+    LEVEL2 = 3
+    lrate = 8e-5
 
     t1 = Timings()
     t2 = Timings()
@@ -273,7 +306,6 @@ def main():
     Render = 'render'
     Plot = 'plotting'
     Stride = 'stride'
-    Save_model = "saving model"
 
     stride = 20
     size = 100
@@ -282,25 +314,24 @@ def main():
     model = load_model(name, level1=LEVEL1, level2=LEVEL2)
     model.compile(loss=tf.keras.losses.MSE, optimizer=tf.keras.optimizers.Adam(lrate))
 
-    data = load_data()
+    data = load_data("car_data.npz")
     images = data['images']
     poses = data['poses']
-    focal = tf.constant(data['focal'], dtype=tf.float32)
+    focal = tf.constant(data['focal']*1e3, dtype=tf.float32)
 
-    near, far, samples = 2.0, 6.0, 64
+    near, far, samples = 18.0, 27.0, 32
     H, W = images[0].shape[:2]
 
-    # t1.get("Images2Tensor")
     images = tf.convert_to_tensor(images)
-    # t1.get("Images2Tensor")
 
     train_images, train_poses = images[:size], poses[:size]
     test_images, test_poses = images[size:], poses[size:]
     snrs = []
     iters = []
-    max_snr = 28.75
+    max_snr = 20
     train_losses = []
     test_losses = []
+    data = []
 
     for i in range(N + 1):
         index = np.random.randint(size)
@@ -309,12 +340,14 @@ def main():
 
         ray_o, ray_d = get_rays(H, W, focal, pose)
         new_rate = decay_rate(i, N, rate=0.3, high=lrate, low=0.4 * lrate)
+        # new_rate = lrate
 
         t2.get(Train)
         train_loss = train(model, target, ray_o, ray_d, near, far, samples,
-                           level1=LEVEL1, level2=LEVEL2, lrate=new_rate, divr=2, divc=2)
+                           level1=LEVEL1, level2=LEVEL2, lrate=new_rate, divr=5, divc=5)
         t2.get(Train)
         train_losses.append(train_loss)
+        data.append((train_loss.numpy(), index))
 
         iters.append(i)
 
@@ -322,9 +355,7 @@ def main():
             t2.get(Stride)
 
             INFO(f"epoch: {i}")
-            # t2.get(Save_model)
             save_model(model, name)
-            # t2.get(Save_model)
 
             test_image = test_images[1]
             test_pose = test_poses[1]
@@ -338,11 +369,7 @@ def main():
             loss = tf.reduce_mean(model.loss(test_image, rgb))
             test_losses.append(loss)
 
-            # t2.get("T2N")
             img = rgb
-            # img = rgb.numpy()
-            # test_image = test_image.numpy()
-            # t2.get("T2N")
 
             snr = -10.0 * tf.math.log(loss) / tf.math.log(10.0)
             snrs.append(snr.numpy())
@@ -353,7 +380,6 @@ def main():
             plots = 4
             plt.figure(figsize=[3*plots, 3])
             plt.subplot(1, plots, 1)
-            # img = rgb.numpy()
             plt.imshow(img)
             plt.title(f"Iteration: {i}")
 
@@ -390,6 +416,7 @@ def main():
         t1.info()
         t2.info()
         print("="*30 + f" iter:{i+1} <-> loss: {train_loss} <-> lrate: {new_rate} " + "="*30)
+        print(data)
 
 
 if __name__ == "__main__":
